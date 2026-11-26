@@ -444,6 +444,21 @@ void WeaselPanel::DoPaint() {
       _HighlightRect(rc, DPI_SCALE(m_style.round_corner_ex),
                      DPI_SCALE(m_style.border), m_style.back_color,
                      m_style.shadow_color, m_style.border_color, roundInfo);
+
+      // SakaIME: test custom rendering
+      ComPtr<ID2D1SolidColorBrush> fishBrush;
+
+      if (SUCCEEDED(m_pD2D->dc->CreateSolidColorBrush(
+              D2D1::ColorF(D2D1::ColorF::Red),
+              fishBrush.GetAddressOf()))) {
+        m_pD2D->dc->FillEllipse(
+            D2D1::Ellipse(
+                D2D1::Point2F(
+                    static_cast<float>(rc.right - 15),
+                    static_cast<float>(rc.top + 15)),
+                6.0f, 6.0f),
+            fishBrush.Get());
+      }
     }
     CRect& prc = m_layout->GetPreeditRect();
     CRect& arc = m_layout->GetAuxiliaryRect();
