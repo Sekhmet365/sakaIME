@@ -61,7 +61,7 @@ class WeaselPanel {
   void _UpdateHideCandidates();
 
   void _UpdateOffsetY(CRect& arc, CRect& prc);
-
+  bool _DrawSakaFish(const CRect& rc);
   void DoPaint();
   void OnDestroy();
   HRESULT OnScroll(UINT uMsg, WPARAM wParam, LPARAM lParam);

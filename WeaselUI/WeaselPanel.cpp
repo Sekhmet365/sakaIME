@@ -420,6 +420,142 @@ void WeaselPanel::_UpdateOffsetY(CRect& arc, CRect& prc) {
   }
 }
 
+bool WeaselPanel::_DrawSakaFish(const CRect& rc) {
+  if (!m_pD2D->dc || !m_pD2D->d2Factory)
+    return false;
+
+  const float s = m_pD2D->m_dpiScaleLayout;
+
+  const float l = rc.left + 2 * s;
+  const float r = rc.right - 2 * s;
+  const float t = rc.top + 2 * s;
+  const float b = rc.bottom - 2 * s;
+  const float h = b - t;
+  const float cy = (t + b) / 2;
+
+  const float head = l + 45 * s;
+  const float tail = r - 40 * s;
+
+  if (tail <= head || h <= 0)
+    return false;
+
+  auto dc = m_pD2D->dc.Get();
+
+  ComPtr<ID2D1SolidColorBrush> gray;
+  ComPtr<ID2D1SolidColorBrush> white;
+  ComPtr<ID2D1SolidColorBrush> black;
+
+  if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0xb4b4b4),
+                                       gray.GetAddressOf())))
+    return false;
+
+  if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0xffffff),
+                                       white.GetAddressOf())))
+    return false;
+
+  if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0x171717),
+                                       black.GetAddressOf())))
+    return false;
+
+  // Create the fish outline.
+  ComPtr<ID2D1PathGeometry> body;
+  ComPtr<ID2D1GeometrySink> sink;
+
+  if (FAILED(m_pD2D->d2Factory->CreatePathGeometry(body.GetAddressOf())))
+    return false;
+
+  if (FAILED(body->Open(sink.GetAddressOf())))
+    return false;
+
+  auto pt = [](float x, float y) { return D2D1::Point2F(x, y); };
+
+  sink->BeginFigure(pt(head, t), D2D1_FIGURE_BEGIN_FILLED);
+
+  sink->AddLine(pt(tail - 12 * s, t));
+
+  sink->AddBezier(D2D1::BezierSegment(pt(tail, t), pt(tail, cy - 10 * s),
+                                      pt(tail, cy - 10 * s)));
+
+  // Tail.
+  sink->AddLine(pt(r, t + 10 * s));
+  sink->AddLine(pt(r - 9 * s, cy));
+  sink->AddLine(pt(r, b - 10 * s));
+  sink->AddLine(pt(tail, cy + 10 * s));
+
+  sink->AddBezier(D2D1::BezierSegment(pt(tail, cy + 10 * s), pt(tail, b),
+                                      pt(tail - 12 * s, b)));
+
+  sink->AddLine(pt(head, b));
+
+  // Rounded head.
+  sink->AddBezier(D2D1::BezierSegment(pt(l, b), pt(l, cy), pt(l, cy)));
+
+  sink->AddBezier(D2D1::BezierSegment(pt(l, cy), pt(l, t), pt(head, t)));
+
+  sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+
+  if (FAILED(sink->Close()))
+    return false;
+
+  // Gray upper body.
+  dc->FillGeometry(body.Get(), gray.Get());
+
+  // White belly, clipped to the fish outline.
+  dc->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), body.Get()),
+                nullptr);
+
+  dc->FillRectangle(D2D1::RectF(l, t + h * 0.52f, tail, b), white.Get());
+
+  dc->PopLayer();
+
+  // Black outline.
+  dc->DrawGeometry(body.Get(), black.Get(), 2.5f * s);
+
+  // Facial features.
+  auto dot = [&](float x, float y, float radius, ID2D1SolidColorBrush* brush) {
+    auto ellipse = D2D1::Ellipse(pt(x, y), radius, radius);
+    dc->FillEllipse(ellipse, brush);
+  };
+
+  const float eyeY = cy - 10 * s;
+  const float eyeL = l + 17 * s;
+  const float eyeR = l + 43 * s;
+
+  // Eye outlines.
+  dot(eyeL, eyeY, 8 * s, black.Get());
+  dot(eyeR, eyeY - 3 * s, 8 * s, black.Get());
+
+  // White eyes.
+  dot(eyeL, eyeY, 6.5f * s, white.Get());
+  dot(eyeR, eyeY - 3 * s, 6.5f * s, white.Get());
+
+  // Unfocused pupils.
+  dot(eyeL - 2 * s, eyeY + s, 2.5f * s, black.Get());
+  dot(eyeR + s, eyeY - 2 * s, 2.5f * s, black.Get());
+
+  // Two tiny nostrils.
+  dot(l + 26 * s, cy + s, 1.5f * s, black.Get());
+  dot(l + 33 * s, cy, 1.5f * s, black.Get());
+
+  // Small triangular mouth.
+  ComPtr<ID2D1PathGeometry> mouth;
+  ComPtr<ID2D1GeometrySink> mouthSink;
+
+  if (SUCCEEDED(m_pD2D->d2Factory->CreatePathGeometry(mouth.GetAddressOf())) &&
+      SUCCEEDED(mouth->Open(mouthSink.GetAddressOf()))) {
+    mouthSink->BeginFigure(pt(l + 22 * s, cy + 9 * s),
+                           D2D1_FIGURE_BEGIN_FILLED);
+    mouthSink->AddLine(pt(l + 38 * s, cy + 7 * s));
+    mouthSink->AddLine(pt(l + 31 * s, cy + 19 * s));
+    mouthSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+
+    if (SUCCEEDED(mouthSink->Close()))
+      dc->FillGeometry(mouth.Get(), black.Get());
+  }
+
+  return true;
+}
+
 void WeaselPanel::DoPaint() {
   if (!m_pD2D || !m_layout || !m_pD2D->dc || !m_pD2D->swapChain)
     return;
@@ -440,20 +576,16 @@ void WeaselPanel::DoPaint() {
          (m_style.inline_preedit && (m_candidateCount || !m_ctx.aux.empty())));
     if (should_draw_background) {
       CRect& rc = m_layout->GetContentRect();
-      IsToRoundStruct roundInfo;
-      _HighlightRect(rc, DPI_SCALE(m_style.round_corner_ex),
-                     DPI_SCALE(m_style.border), m_style.back_color,
-                     m_style.shadow_color, m_style.border_color, roundInfo);
 
-      // SakaIME: test custom rendering
-      ComPtr<ID2D1SolidColorBrush> fishBrush;
-      auto color = D2D1::ColorF(D2D1::ColorF::Red);
-      auto center = D2D1::Point2F(rc.right - 15.0f, rc.top + 15.0f);
-      auto ellipse = D2D1::Ellipse(center, 6.0f, 6.0f);
+      const bool fishDrawn =
+          m_style.layout_type == UIStyle::LAYOUT_HORIZONTAL &&
+          m_candidateCount > 0 && _DrawSakaFish(rc);
 
-      if (SUCCEEDED(m_pD2D->dc->CreateSolidColorBrush(
-              color, fishBrush.GetAddressOf()))) {
-        m_pD2D->dc->FillEllipse(ellipse, fishBrush.Get());
+      if (!fishDrawn) {
+        IsToRoundStruct roundInfo;
+        _HighlightRect(rc, DPI_SCALE(m_style.round_corner_ex),
+                       DPI_SCALE(m_style.border), m_style.back_color,
+                       m_style.shadow_color, m_style.border_color, roundInfo);
       }
     }
     CRect& prc = m_layout->GetPreeditRect();

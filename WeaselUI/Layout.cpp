@@ -47,6 +47,17 @@ Layout::Layout(const UIStyle& style,
   real_margin_y = ((abs(_style.margin_y) > _style.hilite_padding_y)
                        ? abs(_style.margin_y)
                        : _style.hilite_padding_y);
+
+  // SakaIME: reserve space for the fish head and tail
+  if (_style.layout_type == UIStyle::LAYOUT_HORIZONTAL &&
+      candidates_count > 0) {
+    const float scale = pD2D ? pD2D->m_dpiScaleLayout : 1.0f;
+    const int fishMarginX = static_cast<int>(65 * scale);
+    const int fishMarginY = static_cast<int>(20 * scale);
+    real_margin_x = MAX(real_margin_x, fishMarginX);
+    real_margin_y = MAX(real_margin_y, fishMarginY);
+  }
+
   offsetX = offsetY = 0;
   if (_style.shadow_radius != 0) {
     offsetX = abs(_style.shadow_offset_x) + _style.shadow_radius * 2;
