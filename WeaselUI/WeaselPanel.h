@@ -34,6 +34,7 @@ class WeaselPanel {
 
   static const int AUTOREV_TIMER = 20241209;
   static const int AUTOHIDE_TIMER = 20241107;
+  static const int SAKA_ANIMATION_TIMER = 20261127;
 
   HWND hwnd() const;
 
@@ -126,6 +127,9 @@ class WeaselPanel {
   RECT m_drag_window{0, 0, 0, 0};
   UINT_PTR m_clickTimer = 0;
   UINT_PTR m_autoHideTimer = 0;
+  UINT_PTR m_sakaTimer = 0;
+  ULONGLONG m_nextBlink = 0;
+  ULONGLONG m_blinkStart = 0;
   int m_lastWindowWidth = -1;
   int m_lastWindowHeight = -1;
 

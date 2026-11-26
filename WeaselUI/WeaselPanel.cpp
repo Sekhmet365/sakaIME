@@ -8,6 +8,7 @@
 #include <resource.h>
 #include <windowsx.h>
 #include <wrl/client.h>
+#include <cmath>
 
 namespace fs = std::filesystem;
 
@@ -117,6 +118,12 @@ HWND WeaselPanel::hwnd() const {
 void WeaselPanel::_ClearTimers() {
   if (!m_hWnd)
     return;
+  if (m_sakaTimer) {
+    ::KillTimer(m_hWnd, SAKA_ANIMATION_TIMER);
+    m_sakaTimer = 0;
+  }
+  m_nextBlink = 0;
+  m_blinkStart = 0;
   if (m_clickTimer) {
     ::KillTimer(m_hWnd, AUTOREV_TIMER);
     m_clickTimer = 0;
@@ -146,6 +153,18 @@ bool WeaselPanel::IsCountingDown() const {
 
 void WeaselPanel::ShowWindow(int nCmdShow) {
   ::ShowWindow(m_hWnd, nCmdShow);
+  // SakaIME animation lifecycle.
+  if (nCmdShow == SW_HIDE) {
+    if (m_sakaTimer) {
+      ::KillTimer(m_hWnd, SAKA_ANIMATION_TIMER);
+      m_sakaTimer = 0;
+    }
+    m_nextBlink = 0;
+    m_blinkStart = 0;
+  } else if (!m_sakaTimer) {
+    m_nextBlink = ::GetTickCount64() + 3000;
+    m_sakaTimer = ::SetTimer(m_hWnd, SAKA_ANIMATION_TIMER, 33, nullptr);
+  }
   if (m_pD2D) {
     if (nCmdShow != SW_HIDE) {
       // ensure window resources exist when showing
@@ -520,18 +539,74 @@ bool WeaselPanel::_DrawSakaFish(const CRect& rc) {
   const float eyeY = cy - 10 * s;
   const float eyeL = l + 17 * s;
   const float eyeR = l + 43 * s;
+  const ULONGLONG now = ::GetTickCount64();
 
-  // Eye outlines.
-  dot(eyeL, eyeY, 8 * s, black.Get());
-  dot(eyeR, eyeY - 3 * s, 8 * s, black.Get());
+  if (m_nextBlink == 0)
+    m_nextBlink = now + 3000;
 
-  // White eyes.
-  dot(eyeL, eyeY, 6.5f * s, white.Get());
-  dot(eyeR, eyeY - 3 * s, 6.5f * s, white.Get());
+  if (m_blinkStart == 0 && now >= m_nextBlink)
+    m_blinkStart = now;
 
-  // Unfocused pupils.
-  dot(eyeL - 2 * s, eyeY + s, 2.5f * s, black.Get());
-  dot(eyeR + s, eyeY - 2 * s, 2.5f * s, black.Get());
+  float openness = 1.0f;
+
+  if (m_blinkStart != 0) {
+    const ULONGLONG elapsed = now - m_blinkStart;
+
+    if (elapsed >= 200) {
+      m_blinkStart = 0;
+      m_nextBlink = now + 3000 + now % 4000;
+    } else {
+      const float progress = static_cast<float>(elapsed) / 200.0f;
+      openness = 0.08f + 0.92f * std::abs(2.0f * progress - 1.0f);
+    }
+  }
+
+  // Draw an eye component with animated vertical compression.
+  auto eyeDot = [&](float x, float y, float radius,
+                    ID2D1SolidColorBrush* brush) {
+    auto ellipse = D2D1::Ellipse(pt(x, y), radius, radius * openness);
+    dc->FillEllipse(ellipse, brush);
+  };
+
+  // Asymmetric animated eye outlines.
+  eyeDot(eyeL, eyeY, 9.5f * s, black.Get());
+  eyeDot(eyeR, eyeY - 3 * s, 7.5f * s, black.Get());
+
+  // Animated white eyes.
+  eyeDot(eyeL, eyeY, 8.0f * s, white.Get());
+  eyeDot(eyeR, eyeY - 3 * s, 6.0f * s, white.Get());
+
+  // Track the mouse cursor.
+  POINT cursor = {};
+  const bool cursorValid =
+      ::GetCursorPos(&cursor) && ::ScreenToClient(m_hWnd, &cursor);
+
+  auto pupilPos = [&](float x, float y, float maxOffset) {
+    if (!cursorValid)
+      return pt(x, y);
+
+    float dx = static_cast<float>(cursor.x) - x;
+    float dy = static_cast<float>(cursor.y) - y;
+    const float distance = std::sqrt(dx * dx + dy * dy);
+
+    if (distance > maxOffset) {
+      dx *= maxOffset / distance;
+      dy *= maxOffset / distance;
+    }
+
+    return pt(x + dx, y + dy);
+  };
+
+  // Independent pupil movement.
+  auto leftPupil = pupilPos(eyeL, eyeY, 3.2f * s);
+  auto rightPupil = pupilPos(eyeR, eyeY - 3 * s, 2.2f * s);
+
+  eyeDot(leftPupil.x, eyeY + (leftPupil.y - eyeY) * openness, 4.2f * s,
+         black.Get());
+
+  const float rightEyeY = eyeY - 3 * s;
+  eyeDot(rightPupil.x, rightEyeY + (rightPupil.y - rightEyeY) * openness,
+         3.2f * s, black.Get());
 
   // Two tiny nostrils.
   dot(l + 26 * s, cy + s, 1.5f * s, black.Get());
@@ -1360,6 +1435,16 @@ LRESULT WeaselPanel::MsgHandler(HWND hwnd,
       Refresh();
       return 0;
     case WM_TIMER:
+      // SakaIME animation timer.
+      if (wParam == SAKA_ANIMATION_TIMER) {
+        if (::IsWindowVisible(m_hWnd) && m_layout && !hide_candidates &&
+            m_candidateCount > 0 &&
+            m_style.layout_type == UIStyle::LAYOUT_HORIZONTAL) {
+          InvalidateRect(m_hWnd, nullptr, FALSE);
+        }
+        return 0;
+      }
+
       if (wParam == AUTOREV_TIMER) {
         ::KillTimer(m_hWnd, AUTOREV_TIMER);
         m_clickTimer = 0;
