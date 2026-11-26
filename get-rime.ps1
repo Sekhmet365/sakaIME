@@ -72,19 +72,19 @@ if ($os -eq "Windows") {
     $build_variant = "msvc"
     $pattern = ""
     if ($use -eq "weasel") {
-      $pattern = "rime-[0-9a-fA-F]+-" + $os + "-" + $build_variant + "-x(64|86)\.7z"
+      $pattern = "rime-[0-9a-fA-F.]+-" + $os + "-" + $build_variant + "-x(64|86)\.7z"
     } else {
-      $pattern = "rime-(deps-)?[0-9a-fA-F]+-" + $os + "-" + $build_variant + "-x(64|86)\.7z"
+      $pattern = "rime-(deps-)?[0-9a-fA-F.]+-" + $os + "-" + $build_variant + "-x(64|86)\.7z"
     }
   } elseif ($build_variant -eq "mingw") {
-    $pattern = "rime-[0-9a-fA-F]+-" + $os + "-" + $build_variant + "\.tar.bz2"
+    $pattern = "rime-[0-9a-fA-F.]+-" + $os + "-" + $build_variant + "\.tar.bz2"
   } elseif ($build_variant -eq "clang") {
-    $pattern = "rime-(deps-)?[0-9a-fA-F]+-" + $os + "-" + $build_variant + "-x64\.7z"
+    $pattern = "rime-(deps-)?[0-9a-fA-F.]+-" + $os + "-" + $build_variant + "-x64\.7z"
   }
   $home_dir = $env:UserProfile
 } else {
   $build_variant = "universal"
-  $pattern = "rime-(deps-)?[0-9a-fA-F]+-" + $os + "-" + $build_variant + "\.tar.bz2"
+  $pattern = "rime-(deps-)?[0-9a-fA-F.]+-" + $os + "-" + $build_variant + "\.tar.bz2"
   $home_dir = $HOME
 }
 if ($PSBoundParameters.ContainsKey("use") -and ($use -eq "weasel" -or $use -eq "dev")) {
@@ -196,9 +196,9 @@ function Is64Bit {
 }
 if ($os -eq "Windows" -and $use -eq "weasel") {
   if (Is64Bit) {
-    $pattern = "rime-[0-9a-fA-F]+-" + $os + "-" + $build_variant + "-x64\.7z"
+    $pattern = "rime-[0-9a-fA-F.]+-" + $os + "-" + $build_variant + "-x64\.7z"
   } else {
-    $pattern = "rime-[0-9a-fA-F]+-" + $os + "-" + $build_variant + "-x86\.7z"
+    $pattern = "rime-[0-9a-fA-F.]+-" + $os + "-" + $build_variant + "-x86\.7z"
   }
 }
 # check if file already downloaded
@@ -290,7 +290,7 @@ if ($null -ne $response.assets -and $response.assets.Count -gt 0) {
   if ($fileNames -and $cmdOk -and $extract) {
     $fileNames.GetEnumerator() | ForEach-Object {
       $outPath = $_ -replace "(\.7z|\.tar\.bz2)|(deps-)", ''
-      if ((-not $hash) -and $outPath -match "rime-([0-9a-fA-F]+)(.*$)") {
+      if ((-not $hash) -and $outPath -match "rime-([0-9a-fA-F.]+)(.*$)") {
         $hash = $matches[1]
       }
       if ($_ -match ".*\.tar\.bz2") {
