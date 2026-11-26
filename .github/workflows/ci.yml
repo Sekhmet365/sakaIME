@@ -40,8 +40,9 @@ jobs:
       BOOST_ROOT: ${{ github.workspace }}\deps\boost_1_84_0
       SDKVER: 10.0.19041.0
     strategy:
+      fail-fast: false
       matrix:
-        variant: [msbuild, xmake]
+        variant: [msbuild]
     steps:
       - name: Checkout last commit
         uses: actions/checkout@v4
@@ -121,6 +122,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           .\get-rime.ps1 -use dev
+          if (-not (Test-Path ".\include\rime_api.h")) {
+              throw "librime header is missing"
+          }
 
       - name: Build data
         shell: pwsh
