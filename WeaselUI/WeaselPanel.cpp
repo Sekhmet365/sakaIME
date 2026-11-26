@@ -447,17 +447,13 @@ void WeaselPanel::DoPaint() {
 
       // SakaIME: test custom rendering
       ComPtr<ID2D1SolidColorBrush> fishBrush;
+      auto color = D2D1::ColorF(D2D1::ColorF::Red);
+      auto center = D2D1::Point2F(rc.right - 15.0f, rc.top + 15.0f);
+      auto ellipse = D2D1::Ellipse(center, 6.0f, 6.0f);
 
       if (SUCCEEDED(m_pD2D->dc->CreateSolidColorBrush(
-              D2D1::ColorF(D2D1::ColorF::Red),
-              fishBrush.GetAddressOf()))) {
-        m_pD2D->dc->FillEllipse(
-            D2D1::Ellipse(
-                D2D1::Point2F(
-                    static_cast<float>(rc.right - 15),
-                    static_cast<float>(rc.top + 15)),
-                6.0f, 6.0f),
-            fishBrush.Get());
+              color, fishBrush.GetAddressOf()))) {
+        m_pD2D->dc->FillEllipse(ellipse, fishBrush.Get());
       }
     }
     CRect& prc = m_layout->GetPreeditRect();
