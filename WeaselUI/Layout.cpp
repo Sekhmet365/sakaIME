@@ -52,8 +52,8 @@ Layout::Layout(const UIStyle& style,
   if (_style.layout_type == UIStyle::LAYOUT_HORIZONTAL &&
       candidates_count > 0) {
     const float scale = pD2D ? pD2D->m_dpiScaleLayout : 1.0f;
-    const int fishMarginX = static_cast<int>(65 * scale);
-    const int fishMarginY = static_cast<int>(20 * scale);
+    const int fishMarginX = static_cast<int>(92 * scale);
+    const int fishMarginY = static_cast<int>(30 * scale);
     real_margin_x = MAX(real_margin_x, fishMarginX);
     real_margin_y = MAX(real_margin_y, fishMarginY);
   }

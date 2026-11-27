@@ -129,6 +129,7 @@ void WeaselPanel::_ClearTimers() {
   m_nextTinyMood = 0;
   m_tinyNextBlink = 0;
   m_tinyBlinkStart = 0;
+  m_tinyFartStart = 0;
   if (m_clickTimer) {
     ::KillTimer(m_hWnd, AUTOREV_TIMER);
     m_clickTimer = 0;
@@ -170,6 +171,7 @@ void WeaselPanel::ShowWindow(int nCmdShow) {
     m_nextTinyMood = 0;
     m_tinyNextBlink = 0;
     m_tinyBlinkStart = 0;
+    m_tinyFartStart = 0;
   } else if (!m_sakaTimer) {
     m_nextBlink = ::GetTickCount64() + 3000;
     m_sakaTimer = ::SetTimer(m_hWnd, SAKA_ANIMATION_TIMER, 33, nullptr);
@@ -453,13 +455,14 @@ void WeaselPanel::_DrawTinyFish(const CRect& rc) {
     return;
 
   auto dc = m_pD2D->dc.Get();
-  const float s = m_pD2D->m_dpiScaleLayout;
+  const float s = m_pD2D->m_dpiScaleLayout * 1.25f;
   // Independent expression timing.
   const ULONGLONG now = ::GetTickCount64();
 
   static thread_local std::mt19937 rng{std::random_device{}()};
 
-  std::uniform_int_distribution<int> idleDuration(3000, 6000);
+  std::uniform_int_distribution<int> idleDuration(6000, 12000);
+  std::uniform_int_distribution<int> blinkInterval(3000, 6000);
   std::uniform_int_distribution<int> moodChoice(0, 99);
 
   if (m_nextTinyMood == 0)
@@ -469,24 +472,29 @@ void WeaselPanel::_DrawTinyFish(const CRect& rc) {
     if (m_tinyMood != TinyFishMood::Idle) {
       m_tinyMood = TinyFishMood::Idle;
       m_nextTinyMood = now + idleDuration(rng);
+      m_tinyFartStart = 0;
     } else {
       const int choice = moodChoice(rng);
 
-      if (choice < 40) {
+      if (choice < 34) {
         m_tinyMood = TinyFishMood::Happy;
         m_nextTinyMood = now + 1500;
-      } else if (choice < 75) {
+      } else if (choice < 62) {
         m_tinyMood = TinyFishMood::SideEye;
         m_nextTinyMood = now + 2000;
-      } else {
+      } else if (choice < 90) {
         m_tinyMood = TinyFishMood::Sleepy;
         m_nextTinyMood = now + 2500;
+      } else {
+        m_tinyMood = TinyFishMood::Fart;
+        m_tinyFartStart = now;
+        m_nextTinyMood = now + 1400;
       }
     }
   }
 
   // Anchor the little fish to the big fish's tail.
-  const float cx = rc.right - 28 * s;
+  const float cx = rc.right - 47 * s;
   const float cy = rc.top + 27 * s;
 
   const float rx = 25 * s;
@@ -555,7 +563,7 @@ void WeaselPanel::_DrawTinyFish(const CRect& rc) {
 
     if (elapsed >= 220) {
       m_tinyBlinkStart = 0;
-      m_tinyNextBlink = now + idleDuration(rng);
+      m_tinyNextBlink = now + blinkInterval(rng);
     } else {
       const float progress = static_cast<float>(elapsed) / 220.0f;
       openness = 0.08f + 0.92f * std::abs(2.0f * progress - 1.0f);
@@ -612,6 +620,14 @@ void WeaselPanel::_DrawTinyFish(const CRect& rc) {
     if (m_tinyMood == TinyFishMood::SideEye) {
       leftOffset = -2.0f * s;
       rightOffset = -1.5f * s;
+    } else if (m_tinyMood == TinyFishMood::Fart && m_tinyFartStart != 0) {
+      const ULONGLONG elapsed = now - m_tinyFartStart;
+
+      // Look at the big brother guiltily after farting.
+      if (elapsed >= 650) {
+        leftOffset = -2.4f * s;
+        rightOffset = -1.9f * s;
+      }
     }
 
     // Independent pupils.
@@ -655,6 +671,50 @@ void WeaselPanel::_DrawTinyFish(const CRect& rc) {
 
     if (SUCCEEDED(sink->Close()))
       dc->FillGeometry(mouth.Get(), black.Get());
+  }
+  // SakaIME: tiny fart cloud animation.
+  if (m_tinyMood == TinyFishMood::Fart && m_tinyFartStart != 0) {
+    const ULONGLONG elapsed = now - m_tinyFartStart;
+
+    if (elapsed < 1000) {
+      const float progress = static_cast<float>(elapsed) / 1000.0f;
+
+      // Drift slightly outward and upward.
+      const float cloudX = cx + rx + (0.5f + 6.0f * progress) * s;
+
+      const float cloudY = cy + (14.5f - 5.0f * progress) * s;
+
+      // Softer growth and fade-out.
+      const float expansion = 0.65f + 0.65f * progress;
+      const float alpha = 0.78f * (1.0f - progress);
+
+      ComPtr<ID2D1SolidColorBrush> cloudBrush;
+
+      if (SUCCEEDED(dc->CreateSolidColorBrush(
+              D2D1::ColorF(0.69f, 0.74f, 0.64f, alpha),
+              cloudBrush.GetAddressOf()))) {
+        auto puff = [&](float x, float y, float rx0, float ry0) {
+          dc->FillEllipse(
+              D2D1::Ellipse(
+                  pt(cloudX + x * expansion * s, cloudY + y * expansion * s),
+                  rx0 * expansion * s, ry0 * expansion * s),
+              cloudBrush.Get());
+        };
+
+        // Small source puff near the release point.
+        puff(-7.0f, 2.5f, 2.2f, 1.8f);
+
+        // Main lumpy fart cloud.
+        puff(-2.5f, 1.2f, 3.8f, 3.0f);
+        puff(1.5f, -1.8f, 4.8f, 3.9f);
+        puff(5.8f, 0.8f, 4.0f, 3.2f);
+        puff(2.8f, 4.2f, 3.4f, 2.8f);
+        puff(-0.5f, 4.6f, 2.8f, 2.3f);
+
+        // A tiny detached puff to make it feel more gaseous.
+        puff(8.8f, -3.2f, 1.8f, 1.5f);
+      }
+    }
   }
 }
 

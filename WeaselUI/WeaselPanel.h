@@ -132,12 +132,13 @@ class WeaselPanel {
   ULONGLONG m_nextBlink = 0;
   ULONGLONG m_blinkStart = 0;
   // SakaIME: little sister's expression states.
-  enum class TinyFishMood { Idle, Happy, SideEye, Sleepy };
+  enum class TinyFishMood { Idle, Happy, SideEye, Sleepy, Fart };
 
   TinyFishMood m_tinyMood = TinyFishMood::Idle;
   ULONGLONG m_nextTinyMood = 0;
   ULONGLONG m_tinyNextBlink = 0;
   ULONGLONG m_tinyBlinkStart = 0;
+  ULONGLONG m_tinyFartStart = 0;
   int m_lastWindowWidth = -1;
   int m_lastWindowHeight = -1;
 
