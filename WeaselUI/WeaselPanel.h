@@ -139,6 +139,10 @@ class WeaselPanel {
   ULONGLONG m_tinyNextBlink = 0;
   ULONGLONG m_tinyBlinkStart = 0;
   ULONGLONG m_tinyFartStart = 0;
+  // SakaIME: little sister's mouse interaction.
+  ULONGLONG m_tinyHoverStart = 0;
+  ULONGLONG m_tinyLastFart = 0;
+  bool m_tinyHoverTriggered = false;
   int m_lastWindowWidth = -1;
   int m_lastWindowHeight = -1;
 
