@@ -63,6 +63,7 @@ class WeaselPanel {
 
   void _UpdateOffsetY(CRect& arc, CRect& prc);
   bool _DrawSakaFish(const CRect& rc);
+  void _DrawTinyFish(const CRect& rc);
   void DoPaint();
   void OnDestroy();
   HRESULT OnScroll(UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -130,6 +131,13 @@ class WeaselPanel {
   UINT_PTR m_sakaTimer = 0;
   ULONGLONG m_nextBlink = 0;
   ULONGLONG m_blinkStart = 0;
+  // SakaIME: little sister's expression states.
+  enum class TinyFishMood { Idle, Happy, SideEye, Sleepy };
+
+  TinyFishMood m_tinyMood = TinyFishMood::Idle;
+  ULONGLONG m_nextTinyMood = 0;
+  ULONGLONG m_tinyNextBlink = 0;
+  ULONGLONG m_tinyBlinkStart = 0;
   int m_lastWindowWidth = -1;
   int m_lastWindowHeight = -1;
 

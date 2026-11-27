@@ -9,6 +9,7 @@
 #include <windowsx.h>
 #include <wrl/client.h>
 #include <cmath>
+#include <random>
 
 namespace fs = std::filesystem;
 
@@ -124,6 +125,10 @@ void WeaselPanel::_ClearTimers() {
   }
   m_nextBlink = 0;
   m_blinkStart = 0;
+  m_tinyMood = TinyFishMood::Idle;
+  m_nextTinyMood = 0;
+  m_tinyNextBlink = 0;
+  m_tinyBlinkStart = 0;
   if (m_clickTimer) {
     ::KillTimer(m_hWnd, AUTOREV_TIMER);
     m_clickTimer = 0;
@@ -161,6 +166,10 @@ void WeaselPanel::ShowWindow(int nCmdShow) {
     }
     m_nextBlink = 0;
     m_blinkStart = 0;
+    m_tinyMood = TinyFishMood::Idle;
+    m_nextTinyMood = 0;
+    m_tinyNextBlink = 0;
+    m_tinyBlinkStart = 0;
   } else if (!m_sakaTimer) {
     m_nextBlink = ::GetTickCount64() + 3000;
     m_sakaTimer = ::SetTimer(m_hWnd, SAKA_ANIMATION_TIMER, 33, nullptr);
@@ -439,6 +448,216 @@ void WeaselPanel::_UpdateOffsetY(CRect& arc, CRect& prc) {
   }
 }
 
+void WeaselPanel::_DrawTinyFish(const CRect& rc) {
+  if (!m_pD2D || !m_pD2D->dc)
+    return;
+
+  auto dc = m_pD2D->dc.Get();
+  const float s = m_pD2D->m_dpiScaleLayout;
+  // Independent expression timing.
+  const ULONGLONG now = ::GetTickCount64();
+
+  static thread_local std::mt19937 rng{std::random_device{}()};
+
+  std::uniform_int_distribution<int> idleDuration(3000, 6000);
+  std::uniform_int_distribution<int> moodChoice(0, 99);
+
+  if (m_nextTinyMood == 0)
+    m_nextTinyMood = now + idleDuration(rng);
+
+  if (now >= m_nextTinyMood) {
+    if (m_tinyMood != TinyFishMood::Idle) {
+      m_tinyMood = TinyFishMood::Idle;
+      m_nextTinyMood = now + idleDuration(rng);
+    } else {
+      const int choice = moodChoice(rng);
+
+      if (choice < 40) {
+        m_tinyMood = TinyFishMood::Happy;
+        m_nextTinyMood = now + 1500;
+      } else if (choice < 75) {
+        m_tinyMood = TinyFishMood::SideEye;
+        m_nextTinyMood = now + 2000;
+      } else {
+        m_tinyMood = TinyFishMood::Sleepy;
+        m_nextTinyMood = now + 2500;
+      }
+    }
+  }
+
+  // Anchor the little fish to the big fish's tail.
+  const float cx = rc.right - 28 * s;
+  const float cy = rc.top + 27 * s;
+
+  const float rx = 25 * s;
+  const float ry = 23 * s;
+
+  ComPtr<ID2D1SolidColorBrush> gray;
+  ComPtr<ID2D1SolidColorBrush> white;
+  ComPtr<ID2D1SolidColorBrush> black;
+
+  if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0xc2c2c2),
+                                       gray.GetAddressOf())))
+    return;
+
+  if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0xffffff),
+                                       white.GetAddressOf())))
+    return;
+
+  if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(0x171717),
+                                       black.GetAddressOf())))
+    return;
+
+  auto pt = [](float x, float y) { return D2D1::Point2F(x, y); };
+
+  auto dot = [&](float x, float y, float radius, ID2D1SolidColorBrush* brush) {
+    dc->FillEllipse(D2D1::Ellipse(pt(x, y), radius, radius), brush);
+  };
+
+  // Round face.
+  auto face = D2D1::Ellipse(pt(cx, cy), rx, ry);
+  dc->FillEllipse(face, gray.Get());
+
+  // White lower face.
+  ComPtr<ID2D1EllipseGeometry> faceGeometry;
+
+  if (SUCCEEDED(m_pD2D->d2Factory->CreateEllipseGeometry(
+          face, faceGeometry.GetAddressOf()))) {
+    dc->PushLayer(
+        D2D1::LayerParameters(D2D1::InfiniteRect(), faceGeometry.Get()),
+        nullptr);
+
+    dc->FillRectangle(D2D1::RectF(cx - rx, cy + 3 * s, cx + rx, cy + ry),
+                      white.Get());
+
+    dc->PopLayer();
+  }
+
+  // Face outline.
+  dc->DrawEllipse(face, black.Get(), 2.0f * s);
+
+  // Asymmetric eyes.
+  const float eyeL = cx - 10 * s;
+  const float eyeR = cx + 10 * s;
+  const float eyeY = cy - 7 * s;
+
+  // Independent blinking.
+  if (m_tinyNextBlink == 0)
+    m_tinyNextBlink = now + 2000;
+
+  if (m_tinyBlinkStart == 0 && now >= m_tinyNextBlink)
+    m_tinyBlinkStart = now;
+
+  float openness = 1.0f;
+
+  if (m_tinyBlinkStart != 0) {
+    const ULONGLONG elapsed = now - m_tinyBlinkStart;
+
+    if (elapsed >= 220) {
+      m_tinyBlinkStart = 0;
+      m_tinyNextBlink = now + idleDuration(rng);
+    } else {
+      const float progress = static_cast<float>(elapsed) / 220.0f;
+      openness = 0.08f + 0.92f * std::abs(2.0f * progress - 1.0f);
+    }
+  }
+
+  if (m_tinyMood == TinyFishMood::Sleepy)
+    openness *= 0.35f;
+
+  auto eyeDot = [&](float x, float y, float radius,
+                    ID2D1SolidColorBrush* brush) {
+    dc->FillEllipse(D2D1::Ellipse(pt(x, y), radius, radius * openness), brush);
+  };
+
+  if (m_tinyMood == TinyFishMood::Happy) {
+    // Happy curved eyes.
+    auto happyEye = [&](float x, float y, float radius) {
+      ComPtr<ID2D1PathGeometry> path;
+      ComPtr<ID2D1GeometrySink> sink;
+
+      if (FAILED(m_pD2D->d2Factory->CreatePathGeometry(path.GetAddressOf())))
+        return;
+
+      if (FAILED(path->Open(sink.GetAddressOf())))
+        return;
+
+      sink->BeginFigure(pt(x - radius, y), D2D1_FIGURE_BEGIN_HOLLOW);
+
+      sink->AddBezier(D2D1::BezierSegment(pt(x - radius * 0.5f, y - 9 * s),
+                                          pt(x + radius * 0.5f, y - 9 * s),
+                                          pt(x + radius, y)));
+
+      sink->EndFigure(D2D1_FIGURE_END_OPEN);
+
+      if (SUCCEEDED(sink->Close()))
+        dc->DrawGeometry(path.Get(), black.Get(), 2 * s);
+    };
+
+    happyEye(eyeL, eyeY, 6 * s);
+    happyEye(eyeR, eyeY - s, 5 * s);
+
+  } else {
+    // Eye outlines.
+    eyeDot(eyeL, eyeY, 7.5f * s, black.Get());
+    eyeDot(eyeR, eyeY - s, 6.5f * s, black.Get());
+
+    // White eyes.
+    eyeDot(eyeL, eyeY, 6.2f * s, white.Get());
+    eyeDot(eyeR, eyeY - s, 5.2f * s, white.Get());
+
+    float leftOffset = -s;
+    float rightOffset = s;
+
+    if (m_tinyMood == TinyFishMood::SideEye) {
+      leftOffset = -2.0f * s;
+      rightOffset = -1.5f * s;
+    }
+
+    // Independent pupils.
+    eyeDot(eyeL + leftOffset, eyeY, 3.8f * s, black.Get());
+
+    eyeDot(eyeR + rightOffset, eyeY - s, 3.3f * s, black.Get());
+  }
+
+  // Blush only when happy.
+  if (m_tinyMood == TinyFishMood::Happy) {
+    ComPtr<ID2D1SolidColorBrush> blush;
+
+    if (SUCCEEDED(dc->CreateSolidColorBrush(D2D1::ColorF(0xefa3b0),
+                                            blush.GetAddressOf()))) {
+      dc->FillEllipse(
+          D2D1::Ellipse(pt(cx - 16 * s, cy + 2 * s), 4.5f * s, 2.5f * s),
+          blush.Get());
+
+      dc->FillEllipse(
+          D2D1::Ellipse(pt(cx + 16 * s, cy + s), 4.5f * s, 2.5f * s),
+          blush.Get());
+    }
+  }
+
+  // Two tiny nostrils.
+  dot(cx - 3 * s, cy - 2 * s, 1.1f * s, black.Get());
+  dot(cx + 3 * s, cy - 3 * s, 1.1f * s, black.Get());
+
+  // Signature triangular mouth.
+  ComPtr<ID2D1PathGeometry> mouth;
+  ComPtr<ID2D1GeometrySink> sink;
+
+  if (SUCCEEDED(m_pD2D->d2Factory->CreatePathGeometry(mouth.GetAddressOf())) &&
+      SUCCEEDED(mouth->Open(sink.GetAddressOf()))) {
+    sink->BeginFigure(pt(cx - 5 * s, cy + s), D2D1_FIGURE_BEGIN_FILLED);
+
+    sink->AddLine(pt(cx + 5 * s, cy));
+    sink->AddLine(pt(cx + s, cy + 8 * s));
+
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+
+    if (SUCCEEDED(sink->Close()))
+      dc->FillGeometry(mouth.Get(), black.Get());
+  }
+}
+
 bool WeaselPanel::_DrawSakaFish(const CRect& rc) {
   if (!m_pD2D->dc || !m_pD2D->d2Factory)
     return false;
@@ -609,8 +828,8 @@ bool WeaselPanel::_DrawSakaFish(const CRect& rc) {
          3.2f * s, black.Get());
 
   // Two tiny nostrils.
-  dot(l + 26 * s, cy + s, 1.5f * s, black.Get());
-  dot(l + 33 * s, cy, 1.5f * s, black.Get());
+  dot(l + 26 * s, cy - 6 * s, 1.5f * s, black.Get());
+  dot(l + 33 * s, cy - 7 * s, 1.5f * s, black.Get());
 
   // Small triangular mouth.
   ComPtr<ID2D1PathGeometry> mouth;
@@ -618,16 +837,18 @@ bool WeaselPanel::_DrawSakaFish(const CRect& rc) {
 
   if (SUCCEEDED(m_pD2D->d2Factory->CreatePathGeometry(mouth.GetAddressOf())) &&
       SUCCEEDED(mouth->Open(mouthSink.GetAddressOf()))) {
-    mouthSink->BeginFigure(pt(l + 22 * s, cy + 9 * s),
+    mouthSink->BeginFigure(pt(l + 22 * s, cy - 4 * s),
                            D2D1_FIGURE_BEGIN_FILLED);
-    mouthSink->AddLine(pt(l + 38 * s, cy + 7 * s));
-    mouthSink->AddLine(pt(l + 31 * s, cy + 19 * s));
+    mouthSink->AddLine(pt(l + 38 * s, cy - 6 * s));
+    mouthSink->AddLine(pt(l + 31 * s, cy + 6 * s));
     mouthSink->EndFigure(D2D1_FIGURE_END_CLOSED);
 
     if (SUCCEEDED(mouthSink->Close()))
       dc->FillGeometry(mouth.Get(), black.Get());
   }
 
+  // Draw the little sister on top of the tail.
+  _DrawTinyFish(rc);
   return true;
 }
 
