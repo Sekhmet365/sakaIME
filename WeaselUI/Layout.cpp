@@ -49,8 +49,8 @@ Layout::Layout(const UIStyle& style,
                        : _style.hilite_padding_y);
 
   // SakaIME: reserve space for the fish head and tail
-  if (_style.layout_type == UIStyle::LAYOUT_HORIZONTAL &&
-      candidates_count > 0) {
+  if (_style.EffectiveAnimatedSkin(candidates_count) ==
+      UIStyle::AnimatedSkin::Sakaban) {
     const float scale = pD2D ? pD2D->m_dpiScaleLayout : 1.0f;
     const int fishMarginX = static_cast<int>(92 * scale);
     const int fishMarginY = static_cast<int>(30 * scale);

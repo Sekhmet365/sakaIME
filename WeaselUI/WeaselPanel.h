@@ -62,6 +62,9 @@ class WeaselPanel {
   void _UpdateHideCandidates();
 
   void _UpdateOffsetY(CRect& arc, CRect& prc);
+  bool _DrawAnimatedSkin(const CRect& rc);
+  void _StopSkinAnimation();
+  void _UpdateSkinAnimation();
   bool _DrawSakaFish(const CRect& rc);
   void _DrawTinyFish(const CRect& rc);
   void DoPaint();

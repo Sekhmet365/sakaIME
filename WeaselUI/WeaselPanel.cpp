@@ -116,10 +116,8 @@ HWND WeaselPanel::hwnd() const {
   return m_hWnd;
 }
 
-void WeaselPanel::_ClearTimers() {
-  if (!m_hWnd)
-    return;
-  if (m_sakaTimer) {
+void WeaselPanel::_StopSkinAnimation() {
+  if (m_hWnd && m_sakaTimer) {
     ::KillTimer(m_hWnd, SAKA_ANIMATION_TIMER);
     m_sakaTimer = 0;
   }
@@ -132,6 +130,26 @@ void WeaselPanel::_ClearTimers() {
   m_tinyFartStart = 0;
   m_tinyHoverStart = 0;
   m_tinyHoverTriggered = false;
+}
+
+void WeaselPanel::_UpdateSkinAnimation() {
+  if (!m_hWnd)
+    return;
+  const bool animate = ::IsWindowVisible(m_hWnd) && !hide_candidates &&
+                       m_style.EffectiveAnimatedSkin(m_candidateCount) ==
+                           UIStyle::AnimatedSkin::Sakaban;
+  if (!animate) {
+    _StopSkinAnimation();
+  } else if (!m_sakaTimer) {
+    m_nextBlink = ::GetTickCount64() + 3000;
+    m_sakaTimer = ::SetTimer(m_hWnd, SAKA_ANIMATION_TIMER, 33, nullptr);
+  }
+}
+
+void WeaselPanel::_ClearTimers() {
+  _StopSkinAnimation();
+  if (!m_hWnd)
+    return;
   if (m_clickTimer) {
     ::KillTimer(m_hWnd, AUTOREV_TIMER);
     m_clickTimer = 0;
@@ -161,25 +179,7 @@ bool WeaselPanel::IsCountingDown() const {
 
 void WeaselPanel::ShowWindow(int nCmdShow) {
   ::ShowWindow(m_hWnd, nCmdShow);
-  // SakaIME animation lifecycle.
-  if (nCmdShow == SW_HIDE) {
-    if (m_sakaTimer) {
-      ::KillTimer(m_hWnd, SAKA_ANIMATION_TIMER);
-      m_sakaTimer = 0;
-    }
-    m_nextBlink = 0;
-    m_blinkStart = 0;
-    m_tinyMood = TinyFishMood::Idle;
-    m_nextTinyMood = 0;
-    m_tinyNextBlink = 0;
-    m_tinyBlinkStart = 0;
-    m_tinyFartStart = 0;
-    m_tinyHoverStart = 0;
-    m_tinyHoverTriggered = false;
-  } else if (!m_sakaTimer) {
-    m_nextBlink = ::GetTickCount64() + 3000;
-    m_sakaTimer = ::SetTimer(m_hWnd, SAKA_ANIMATION_TIMER, 33, nullptr);
-  }
+  _UpdateSkinAnimation();
   if (m_pD2D) {
     if (nCmdShow != SW_HIDE) {
       // ensure window resources exist when showing
@@ -340,8 +340,13 @@ void WeaselPanel::Refresh() {
   if (!m_style.font_face.empty() &&
       (m_ostyle != m_style || !m_pD2D->pTextFormat))
     m_pD2D->InitDirectWriteResources();
+  if (m_ostyle.animated_skin != m_style.animated_skin) {
+    _StopSkinAnimation();
+    m_tinyLastFart = 0;
+  }
   m_ostyle = m_style;
   _UpdateHideCandidates();
+  _UpdateSkinAnimation();
   auto hr = m_pD2D->direct3dDevice
                 ? m_pD2D->direct3dDevice->GetDeviceRemovedReason()
                 : DXGI_ERROR_DEVICE_REMOVED;
@@ -764,6 +769,15 @@ void WeaselPanel::_DrawTinyFish(const CRect& rc) {
   }
 }
 
+bool WeaselPanel::_DrawAnimatedSkin(const CRect& rc) {
+  switch (m_style.EffectiveAnimatedSkin(m_candidateCount)) {
+    case UIStyle::AnimatedSkin::Sakaban:
+      return _DrawSakaFish(rc);
+    default:
+      return false;
+  }
+}
+
 bool WeaselPanel::_DrawSakaFish(const CRect& rc) {
   if (!m_pD2D->dc || !m_pD2D->d2Factory)
     return false;
@@ -979,11 +993,9 @@ void WeaselPanel::DoPaint() {
     if (should_draw_background) {
       CRect& rc = m_layout->GetContentRect();
 
-      const bool fishDrawn =
-          m_style.layout_type == UIStyle::LAYOUT_HORIZONTAL &&
-          m_candidateCount > 0 && _DrawSakaFish(rc);
+      const bool skinDrawn = _DrawAnimatedSkin(rc);
 
-      if (!fishDrawn) {
+      if (!skinDrawn) {
         IsToRoundStruct roundInfo;
         _HighlightRect(rc, DPI_SCALE(m_style.round_corner_ex),
                        DPI_SCALE(m_style.border), m_style.back_color,
@@ -1766,8 +1778,8 @@ LRESULT WeaselPanel::MsgHandler(HWND hwnd,
       // SakaIME animation timer.
       if (wParam == SAKA_ANIMATION_TIMER) {
         if (::IsWindowVisible(m_hWnd) && m_layout && !hide_candidates &&
-            m_candidateCount > 0 &&
-            m_style.layout_type == UIStyle::LAYOUT_HORIZONTAL) {
+            m_style.EffectiveAnimatedSkin(m_candidateCount) ==
+                UIStyle::AnimatedSkin::Sakaban) {
           InvalidateRect(m_hWnd, nullptr, FALSE);
         }
         return 0;

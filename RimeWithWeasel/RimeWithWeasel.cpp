@@ -1129,6 +1129,16 @@ void LoadWeaselUIStyle(RimeConfig* config,
     str = std::regex_replace(str, std::wregex(L"\\s*(,|:|^|$)\\s*"), L"$1");
   };
   const std::function<void(int&)> _abs = [](int& value) { value = abs(value); };
+  static constexpr Array<UIStyle::AnimatedSkin, 3> skinOptions = {
+      {{"default", UIStyle::AnimatedSkin::Default},
+       {"sakaban", UIStyle::AnimatedSkin::Sakaban},
+       {"tipsy_couple", UIStyle::AnimatedSkin::TipsyCouple}}};
+  if (initialize)
+    style.animated_skin = UIStyle::AnimatedSkin::Sakaban;
+  _RimeParseStringOptWithFallback(config, "style/animated_skin",
+                                  style.animated_skin, skinOptions,
+                                  style.animated_skin);
+
   // get font faces
   _RimeGetIntStr(config, "style/font_face", style.font_face, 0, 0, rmspace);
   std::wstring* const pFallbackFontFace = initialize ? &style.font_face : NULL;

@@ -203,6 +203,8 @@ struct UIStyle {
     FORCE_DWORD = 0xffffffff
   };
 
+  enum class AnimatedSkin { Default = 0, Sakaban, TipsyCouple };
+
   enum PreeditType { COMPOSITION, PREVIEW, PREVIEW_ALL };
   enum HoverType { NONE, SEMI_HILITE, HILITE };
   enum LayoutType {
@@ -226,6 +228,7 @@ struct UIStyle {
   int comment_font_point;
   int candidate_abbreviate_length;
 
+  AnimatedSkin animated_skin;
   bool inline_preedit;
   bool display_tray_icon;
   bool ascii_tip_follow_cursor;
@@ -304,6 +307,7 @@ struct UIStyle {
         label_font_point(0),
         comment_font_point(0),
         candidate_abbreviate_length(0),
+        animated_skin(AnimatedSkin::Sakaban),
         inline_preedit(false),
         display_tray_icon(false),
         ascii_tip_follow_cursor(false),
@@ -367,9 +371,18 @@ struct UIStyle {
         baseline(0),
         linespacing(0),
         client_caps(0) {}
+  // Unsupported layouts and skins without a renderer use ordinary Weasel.
+  AnimatedSkin EffectiveAnimatedSkin(size_t candidate_count) const {
+    return animated_skin == AnimatedSkin::Sakaban &&
+                   layout_type == LAYOUT_HORIZONTAL && candidate_count > 0
+               ? AnimatedSkin::Sakaban
+               : AnimatedSkin::Default;
+  }
+
   bool operator!=(const UIStyle& st) {
     return (
-        align_type != st.align_type || antialias_mode != st.antialias_mode ||
+        animated_skin != st.animated_skin || align_type != st.align_type ||
+        antialias_mode != st.antialias_mode ||
         preedit_type != st.preedit_type || layout_type != st.layout_type ||
         vertical_text_left_to_right != st.vertical_text_left_to_right ||
         vertical_text_with_wrap != st.vertical_text_with_wrap ||
@@ -507,6 +520,8 @@ void serialize(Archive& ar, weasel::UIStyle& s, const unsigned int version) {
   ar & s.client_caps;
   ar & s.baseline;
   ar & s.linespacing;
+  // IPC contract change: rebuild and deploy communicating components together.
+  ar & s.animated_skin;
 }
 
 template <typename Archive>
